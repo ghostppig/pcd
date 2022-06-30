@@ -1,0 +1,178 @@
+
+select
+    mchtradeno as MchTradeNo,
+    entcode as CompanyID,
+    entname as CompanyName,
+    shopcode as MID,
+    shopname as MerchantName,
+    date_format(tradetime, '%Y%m%d%H%i%s') as DateTime,
+    RIGHT(devtradeno,12) as RRNTransactionNo,
+    case type when 'PAY' then 'APPROVED' when 'REVOKED' then 'REFUND' else type end as TransactionType,
+    paytype as WalletName,
+    FORMAT(amount/100, 3) as TransactionAmt,
+    currency as TransactionCurrency,
+    deviceid as TID,
+    mcc as MCC,
+    currency as WalletSettlementCurrency,
+    '' as WalletSettlementAmt,
+    '' as WalletFeeAmount,
+    '' as WalletNetSettlementAmount,
+    '' as WalletSettlementFXRate,
+    '' as WalletSettlementFeesRate,
+    outtradeno,
+    transactionid
+    ,tradetype
+    ,tradestate
+from
+    (select
+        wxbsenterprise.entname as entcode,
+            wxbsenterprise.entinfo as entname,
+            wxbsshop.shopname as shopcode,
+            wxbsshop.licenseinfo as shopname,
+            endtime as tradetime,
+            outtradeno as mchtradeno,
+            tradeno as devtradeno,
+            'PAY' as type,
+            payment_type as paytype,
+            orderamount as amount,
+            wxbsrecord.currency,
+            wxbsshop.mcc,
+            deviceid,
+            payoperator as deviceno,
+            outtradeno,
+            detail,
+            wxbsrecord.transactionid
+            ,tradetype
+            ,tradestate
+    from
+        wxbsrecord
+    join wxbsenterprise on wxbsrecord.entname = wxbsenterprise.entname
+    join wxbsshop on wxbsrecord.shopname = wxbsshop.shopname
+    join meta_trade_type on meta_trade_type.trade_type = wxbsrecord.tradetype
+    where
+        wxbsrecord.endtime is not null
+    union all
+
+    select
+        wxbsenterprise.entname as entcode,
+            wxbsenterprise.entinfo as entname,
+            wxbsshop.shopname as shopcode,
+            wxbsshop.licenseinfo as shopname,
+            canceltime as tradetime,
+            outtradeno as mchtradeno,
+            tradeno as devtradeno,
+            'REVOKED' as type,
+            payment_type as paytype,
+            orderamount as amount,
+            wxbsrecord.currency,
+            wxbsshop.mcc,
+            deviceid,
+            refvoperator as deviceno,
+            outtradeno,
+            detail,
+            wxbsrecord.transactionid
+            ,tradetype
+            ,tradestate
+    from
+        wxbsrecord
+    join wxbsenterprise on wxbsrecord.entname = wxbsenterprise.entname
+    join wxbsshop on wxbsrecord.shopname = wxbsshop.shopname
+    join meta_trade_type on meta_trade_type.trade_type = wxbsrecord.tradetype
+    where
+        tradestate = 'REVOKED'
+
+            and wxbsrecord.canceltime is not null
+   union all select
+        wxbsenterprise.entname as entcode,
+            wxbsenterprise.entinfo as entname,
+            wxbsshop.shopname as shopcode,
+            wxbsshop.licenseinfo as shopname,
+            wxbsrefundrecord.begintime as tradetime,
+            wxbsrefundrecord.outrefundno as mchtradeno,
+            wxbsrefundrecord.refundno as devtradeno,
+            'REFUND' as type,
+            payment_type as paytype,
+            refundamount as amount,
+            wxbsrefundrecord.currency,
+            wxbsshop.mcc,
+            wxbsrefundrecord.deviceid,
+            wxbsrefundrecord.refvoperator as deviceno,
+            wxbsrecord.outtradeno,
+            detail,
+            wxbsrefundrecord.transactionid
+            ,tradetype
+            ,tradestate
+    from
+        wxbsrefundrecord
+    join wxbsenterprise on wxbsrefundrecord.entname = wxbsenterprise.entname
+    join wxbsshop on wxbsrefundrecord.shopname = wxbsshop.shopname
+    join wxbsrecord on wxbsrefundrecord.outtradeno = wxbsrecord.outtradeno
+    join meta_trade_type on meta_trade_type.trade_type = wxbsrecord.tradetype
+
+    union all
+    select
+        wxbsenterprise.entname as entcode,
+            wxbsenterprise.entinfo as entname,
+            wxbsmerchant.merchid as shopcode,
+            wxbsmerchant.merchinfo as shopname,
+            endtime as tradetime,
+            outtradeno as mchtradeno,
+            tradeno as devtradeno,
+            'PAY' as type,
+            payment_type as paytype,
+            orderamount as amount,
+            wxbsonlinerecord.currency,
+            wxbsmerchant.mcc,
+            wxbsonlinerecord.deviceinfo as deviceid,
+            case
+                when char_length(wxbsonlinerecord.deviceinfo) > 4 then left(wxbsonlinerecord.deviceinfo, 4)
+                else wxbsonlinerecord.deviceinfo
+            end as deviceno,
+            outtradeno,
+            detail,
+            wxbsonlinerecord.transactionid
+            ,tradetype
+            ,tradestate
+    from
+        wxbsonlinerecord
+    join wxbsenterprise on wxbsonlinerecord.entname = wxbsenterprise.entname
+    join wxbsmerchant on wxbsonlinerecord.merchid = wxbsmerchant.merchid
+    join meta_trade_type on meta_trade_type.trade_type = wxbsonlinerecord.tradetype
+    where
+        tradestate != 'ALICLOSED'
+            and wxbsonlinerecord.endtime is not null
+
+    union all select
+        wxbsenterprise.entname as entcode,
+            wxbsenterprise.entinfo as entname,
+            wxbsmerchant.merchid as shopcode,
+            wxbsmerchant.merchinfo as shopname,
+            wxbsonlinerefundrecord.begintime as tradetime,
+            wxbsonlinerefundrecord.outrefundno as mchtradeno,
+            wxbsonlinerefundrecord.refundno as devtradeno,
+            'REFUND' as type,
+            payment_type as paytype,
+            refundamount as amount,
+            wxbsonlinerefundrecord.currency,
+            wxbsmerchant.mcc,
+            wxbsonlinerefundrecord.deviceid,
+            case
+                when char_length(wxbsonlinerefundrecord.deviceid) > 4 then substring(wxbsonlinerefundrecord.deviceid, 1, 4)
+                else wxbsonlinerefundrecord.deviceid
+            end as deviceno,
+            wxbsonlinerecord.outtradeno,
+            detail,
+            wxbsonlinerefundrecord.transactionid
+            ,tradetype
+            ,tradestate
+    from
+        wxbsonlinerefundrecord
+    join wxbsenterprise on wxbsonlinerefundrecord.entname = wxbsenterprise.entname
+    join wxbsmerchant on wxbsonlinerefundrecord.merchid = wxbsmerchant.merchid
+    join wxbsonlinerecord on wxbsonlinerefundrecord.outtradeno = wxbsonlinerecord.outtradeno
+    join meta_trade_type on meta_trade_type.trade_type = wxbsonlinerecord.tradetype
+ 
+            ) a
+where paytype = 'ALIPAY'
+and outtradeno = '000600070001220620151203'
+order by tradetime;
